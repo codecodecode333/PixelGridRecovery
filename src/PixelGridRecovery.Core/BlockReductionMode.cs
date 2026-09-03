@@ -4,5 +4,7 @@ public enum BlockReductionMode
 {
     Center,
     Average,
-    Median
+    Median,
+    AreaWeightedAverage,
+    DominantColor
 }

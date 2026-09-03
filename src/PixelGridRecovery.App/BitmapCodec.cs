@@ -14,7 +14,7 @@ public static class BitmapCodec
         if (bitmap.RawFormat.Guid != ImageFormat.Png.Guid && bitmap.RawFormat.Guid != ImageFormat.Jpeg.Guid)
             throw new ArgumentException("PNG 또는 JPG 이미지를 선택해 주세요.", nameof(path));
         if ((long)bitmap.Width * bitmap.Height > MaxImagePixels)
-            throw new ArgumentException($"V0.1은 최대 {MaxImagePixels:N0} 픽셀 이미지를 지원합니다.", nameof(path));
+            throw new ArgumentException($"최대 {MaxImagePixels:N0} 픽셀 이미지를 지원합니다.", nameof(path));
         return FromBitmap(bitmap);
     }
 

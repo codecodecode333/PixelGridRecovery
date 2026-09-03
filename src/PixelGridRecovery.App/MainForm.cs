@@ -7,18 +7,19 @@ public sealed partial class MainForm : Form
 {
     private readonly ImageProcessingService service = new();
     private PixelImage? original;
-    private ProcessingResult? result;
+    private GridRecoveryResult? result;
     private Bitmap? originalBitmap;
     private Bitmap? resultBitmap;
     private string? sourcePath;
     private bool updating;
     private double confidence;
+    private GridDetectionMethod detectionMethod = GridDetectionMethod.Unknown;
 
     public MainForm()
     {
         BuildLayout();
         modeInput.DataSource = Enum.GetValues<BlockReductionMode>();
-        modeInput.SelectedItem = BlockReductionMode.Median;
+        modeInput.SelectedItem = BlockReductionMode.DominantColor;
         loadButton.Click += (_, _) => LoadImage();
         detectButton.Click += (_, _) => RunOperation(AutoDetect);
         previewButton.Click += (_, _) => RunOperation(PreviewResult);
@@ -30,8 +31,8 @@ public sealed partial class MainForm : Form
         settings.Enabled = detectButton.Enabled = previewButton.Enabled = exportButton.Enabled = false;
     }
 
-    private GridInfo CurrentGrid => new((int)cellWidthInput.Value, (int)cellHeightInput.Value,
-        (int)offsetXInput.Value, (int)offsetYInput.Value, confidence);
+    private GridGeometry CurrentGrid => new((double)cellWidthInput.Value, (double)cellHeightInput.Value,
+        (double)offsetXInput.Value, (double)offsetYInput.Value, confidence, detectionMethod);
 
     private void LoadImage()
     {
@@ -61,6 +62,8 @@ public sealed partial class MainForm : Form
             updating = false;
             settings.Enabled = detectButton.Enabled = true;
             confidence = 0;
+            detectionMethod = GridDetectionMethod.Unknown;
+            methodLabel.Text = "Method: —";
             confidenceLabel.Text = "Confidence: —";
             InvalidateResult();
             UpdateGridDisplay();
@@ -72,21 +75,25 @@ public sealed partial class MainForm : Form
     {
         if (original is null)
             return;
-        var detected = service.Detect(original);
+        var detection = service.DetectDetailed(original);
+        var detected = detection.Geometry;
+        System.Diagnostics.Debug.WriteLine($"Grid detection: X={detection.X}; Y={detection.Y}");
         updating = true;
-        cellWidthInput.Value = detected.CellWidth;
-        cellHeightInput.Value = detected.CellHeight;
+        cellWidthInput.Value = (decimal)detected.CellWidth;
+        cellHeightInput.Value = (decimal)detected.CellHeight;
         UpdateOffsetLimits();
-        offsetXInput.Value = detected.OffsetX;
-        offsetYInput.Value = detected.OffsetY;
+        offsetXInput.Value = Math.Min(offsetXInput.Maximum, (decimal)detected.OffsetX);
+        offsetYInput.Value = Math.Min(offsetYInput.Maximum, (decimal)detected.OffsetY);
         updating = false;
         confidence = detected.Confidence;
+        detectionMethod = detected.Method;
+        methodLabel.Text = $"Method: {detected.Method}";
         confidenceLabel.Text = $"Confidence: {confidence:P0}";
         InvalidateResult();
         UpdateGridDisplay();
         statusLabel.Text = confidence < 0.5
             ? "검출 신뢰도가 낮습니다. 격자 값을 확인하고 직접 수정할 수 있습니다."
-            : $"Grid: {detected.CellWidth} × {detected.CellHeight} · Offset: {detected.OffsetX}, {detected.OffsetY}";
+            : $"Grid: {detected.CellWidth:F3} × {detected.CellHeight:F3} · Offset: {detected.OffsetX:F3}, {detected.OffsetY:F3}";
     }
 
     private void GridChanged()
@@ -97,6 +104,8 @@ public sealed partial class MainForm : Form
         UpdateOffsetLimits();
         updating = false;
         confidence = 0;
+        detectionMethod = GridDetectionMethod.Manual;
+        methodLabel.Text = "Method: Manual";
         confidenceLabel.Text = "Confidence: 수동 설정";
         InvalidateResult();
         UpdateGridDisplay();
@@ -104,8 +113,8 @@ public sealed partial class MainForm : Form
 
     private void UpdateOffsetLimits()
     {
-        offsetXInput.Maximum = cellWidthInput.Value - 1;
-        offsetYInput.Maximum = cellHeightInput.Value - 1;
+        offsetXInput.Maximum = cellWidthInput.Value - 0.001m;
+        offsetYInput.Maximum = cellHeightInput.Value - 0.001m;
     }
 
     private void UpdateGridDisplay()
@@ -116,8 +125,8 @@ public sealed partial class MainForm : Form
         try
         {
             var bounds = service.GetCropBounds(original, CurrentGrid);
-            croppedSizeLabel.Text = $"Cropped: {bounds.Width} × {bounds.Height}";
-            outputSizeLabel.Text = $"Output: {bounds.Width / CurrentGrid.CellWidth} × {bounds.Height / CurrentGrid.CellHeight}";
+            croppedSizeLabel.Text = $"Cropped: {bounds.Width:F3} × {bounds.Height:F3}";
+            outputSizeLabel.Text = $"Output: {bounds.Columns} × {bounds.Rows}";
             previewButton.Enabled = true;
         }
         catch (ArgumentException)

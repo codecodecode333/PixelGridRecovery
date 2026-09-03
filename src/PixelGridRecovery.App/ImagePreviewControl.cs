@@ -6,7 +6,7 @@ namespace PixelGridRecovery.App;
 public sealed class ImagePreviewControl : Control
 {
     private Bitmap? previewImage;
-    private GridInfo? grid;
+    private GridGeometry? grid;
     private bool showGrid;
 
     public Bitmap? PreviewImage
@@ -15,7 +15,7 @@ public sealed class ImagePreviewControl : Control
         set { previewImage = value; Invalidate(); }
     }
 
-    public GridInfo? Grid
+    public GridGeometry? Grid
     {
         get => grid;
         set { grid = value; Invalidate(); }
@@ -85,17 +85,23 @@ public sealed class ImagePreviewControl : Control
                 graphics.FillRectangle(dark, rect.X + column * square, rect.Y + row * square, square, square);
     }
 
-    private static void DrawGrid(Graphics graphics, RectangleF rect, float scale, GridInfo grid)
+    private void DrawGrid(Graphics graphics, RectangleF rect, float scale, GridGeometry grid)
     {
         using var pen = new Pen(Color.FromArgb(155, 0, 235, 255));
-        float stepX = grid.CellWidth * scale;
-        float stepY = grid.CellHeight * scale;
         // Avoid painting thousands of indistinguishable lines when zoomed out.
-        stepX *= Math.Max(1, MathF.Ceiling(4 / stepX));
-        stepY *= Math.Max(1, MathF.Ceiling(4 / stepY));
-        for (float x = rect.Left + grid.OffsetX * scale; x <= rect.Right; x += stepX)
+        int strideX = Math.Max(1, (int)Math.Ceiling(4 / (grid.CellWidth * scale)));
+        int strideY = Math.Max(1, (int)Math.Ceiling(4 / (grid.CellHeight * scale)));
+        int columns = (int)Math.Floor((previewImage!.Width - grid.OffsetX) / grid.CellWidth);
+        int rows = (int)Math.Floor((previewImage.Height - grid.OffsetY) / grid.CellHeight);
+        for (int column = 0; column <= columns; column += strideX)
+        {
+            float x = (float)(rect.Left + grid.BoundaryX(column) * scale);
             graphics.DrawLine(pen, x, rect.Top, x, rect.Bottom);
-        for (float y = rect.Top + grid.OffsetY * scale; y <= rect.Bottom; y += stepY)
+        }
+        for (int row = 0; row <= rows; row += strideY)
+        {
+            float y = (float)(rect.Top + grid.BoundaryY(row) * scale);
             graphics.DrawLine(pen, rect.Left, y, rect.Right, y);
+        }
     }
 }

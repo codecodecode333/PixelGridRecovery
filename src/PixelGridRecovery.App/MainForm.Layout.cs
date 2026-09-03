@@ -13,6 +13,7 @@ public sealed partial class MainForm
     private readonly ComboBox modeInput = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Top, AccessibleName = "Reduction Mode" };
     private readonly CheckBox overlayInput = new() { Text = "Grid Overlay 표시", Checked = true, AutoSize = true };
     private readonly Label confidenceLabel = MakeLabel("Confidence: —");
+    private readonly Label methodLabel = new() { Text = "Method: —", AutoSize = true, MaximumSize = new Size(210, 0), AccessibleName = "Detection Method", Margin = new Padding(3, 7, 3, 7) };
     private readonly Label originalSizeLabel = MakeLabel("Original: —");
     private readonly Label croppedSizeLabel = MakeLabel("Cropped: —");
     private readonly Label outputSizeLabel = MakeLabel("Output: —");
@@ -24,7 +25,7 @@ public sealed partial class MainForm
 
     private void BuildLayout()
     {
-        Text = "PixelGridRecovery · V0.1";
+        Text = "PixelGridRecovery · V0.2";
         Font = new Font("Segoe UI", 10);
         AutoScaleMode = AutoScaleMode.Dpi;
         ClientSize = new Size(1220, 740);
@@ -57,6 +58,7 @@ public sealed partial class MainForm
         AddNumber("Offset X", offsetXInput);
         AddNumber("Offset Y", offsetYInput);
         settings.Controls.Add(confidenceLabel);
+        settings.Controls.Add(methodLabel);
         settings.Controls.Add(overlayInput);
         settings.Controls.Add(MakeLabel("Reduction Mode"));
         settings.Controls.Add(modeInput);
@@ -99,5 +101,5 @@ public sealed partial class MainForm
 
     private static Label MakeLabel(string text) => new() { Text = text, AutoSize = true, Margin = new Padding(3, 7, 3, 7) };
     private static Button MakeButton(string text) => new() { Text = text, AutoSize = true, Height = 36, Padding = new Padding(8, 3, 8, 3), Margin = new Padding(0, 3, 8, 3), AccessibleName = text };
-    private static NumericUpDown MakeNumber(string name, int minimum, int value) => new() { Minimum = minimum, Maximum = 1_000_000, Value = value, Dock = DockStyle.Fill, AccessibleName = name };
+    private static NumericUpDown MakeNumber(string name, int minimum, int value) => new() { Minimum = minimum, Maximum = 1_000_000, Value = value, DecimalPlaces = 3, Increment = 0.05m, Dock = DockStyle.Fill, AccessibleName = name };
 }

@@ -61,6 +61,28 @@ public sealed class BitmapCodecTests : IDisposable
     }
 
     [Fact]
+    public void FractionalDetectionAndManualGeometryExportPixelPerfectPng()
+    {
+        var logical = FractionalSyntheticImages.Sprite();
+        var input = FractionalSyntheticImages.Rasterize(logical, 18.55, 18.70, 7.35, 12.7);
+        string sourcePath = Path.Combine(directory, "fractional-input.png");
+        BitmapCodec.SavePng(input, sourcePath);
+        var loaded = BitmapCodec.Load(sourcePath);
+        var service = new ImageProcessingService();
+        foreach (var grid in new[] { new GridGeometry(18.55, 18.70, 7.35, 12.7), service.DetectGeometry(loaded) })
+        {
+            var result = service.Process(loaded, grid);
+            string path = Path.Combine(directory, $"fractional-{grid.Method}.png");
+            BitmapCodec.SavePng(result.Output, path);
+            var exported = BitmapCodec.Load(path);
+            Assert.Equal(64, exported.Width);
+            Assert.Equal(64, exported.Height);
+            for (int y = 0; y < 64; y++)
+            for (int x = 0; x < 64; x++) Assert.Equal(logical[x, y], exported[x, y]);
+        }
+    }
+
+    [Fact]
     public void FailedExportDoesNotLeaveTemporaryFiles()
     {
         string destination = Path.Combine(directory, "existing-directory");

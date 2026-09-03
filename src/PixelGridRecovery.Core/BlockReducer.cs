@@ -12,6 +12,8 @@ public sealed class BlockReducer
             throw new ArgumentException("Input must contain only complete grid cells.", nameof(image));
         if (!Enum.IsDefined(mode))
             throw new ArgumentOutOfRangeException(nameof(mode));
+        if (mode is BlockReductionMode.AreaWeightedAverage or BlockReductionMode.DominantColor)
+            return new GridSampler().Recover(image, new GridGeometry(cellWidth, cellHeight, 0, 0), mode).Output;
 
         var result = new PixelImage(image.Width / cellWidth, image.Height / cellHeight);
         var histogram = mode == BlockReductionMode.Median ? new int[4 * 256] : [];

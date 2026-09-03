@@ -1,5 +1,6 @@
 using System.Runtime.ExceptionServices;
 using PixelGridRecovery.App;
+using PixelGridRecovery.Core;
 
 namespace PixelGridRecovery.App.Tests;
 
@@ -35,6 +36,15 @@ public sealed class MainFormLayoutTests
                 Assert.Equal(4, buttons.Length);
                 Assert.All(buttons, button => Assert.True(button.Parent!.ClientRectangle.Contains(button.Bounds), $"Clipped button: {button.Text}"));
                 Assert.Equal(4, controls.OfType<NumericUpDown>().Count());
+                Assert.All(controls.OfType<NumericUpDown>(), input =>
+                {
+                    Assert.Equal(3, input.DecimalPlaces);
+                    Assert.Equal(0.05m, input.Increment);
+                    input.Value = 18.55m;
+                    Assert.Equal(18.55m, input.Value);
+                });
+                Assert.Equal(BlockReductionMode.DominantColor, controls.OfType<ComboBox>().Single().SelectedItem);
+                Assert.Contains(controls, control => control.AccessibleName == "Detection Method");
                 string? output = Environment.GetEnvironmentVariable("PIXELGRID_LAYOUT_PATH");
                 if (width == 1220 && !string.IsNullOrWhiteSpace(output))
                     rendered.Save(output, System.Drawing.Imaging.ImageFormat.Png);

@@ -19,33 +19,31 @@ public sealed class GridDetector
 
     public GridInfo Detect(PixelImage image)
     {
-        ArgumentNullException.ThrowIfNull(image);
-        var horizontal = new double[image.Width];
-        var vertical = new double[image.Height];
-        for (int y = 0; y < image.Height; y++)
-        for (int x = 0; x < image.Width; x++)
-        {
-            int index = y * image.Width + x;
-            var pixel = image.Pixels[index];
-            if (x > 0)
-                horizontal[x] += Difference(pixel, image.Pixels[index - 1]) / image.Height;
-            if (y > 0)
-                vertical[y] += Difference(pixel, image.Pixels[index - image.Width]) / image.Width;
-        }
-
-        var axisX = DetectAxis(horizontal);
-        var axisY = DetectAxis(vertical);
+        var signals = EdgeSignals.Build(image);
+        var axisX = DetectAxis(signals.X);
+        var axisY = DetectAxis(signals.Y);
         return new GridInfo(axisX.Period, axisY.Period, axisX.Offset, axisY.Offset,
             Math.Min(axisX.Confidence, axisY.Confidence));
     }
 
-    private static double Difference(Rgba32 a, Rgba32 b)
+    public GridGeometry DetectGeometry(PixelImage image) => DetectDetailed(image).Geometry;
+
+    public GridDetectionResult DetectDetailed(PixelImage image)
     {
-        // Premultiplied color ignores hidden RGB; alpha edges still contribute.
-        return (Math.Abs(a.R * a.A - b.R * b.A) / 255.0
-              + Math.Abs(a.G * a.A - b.G * b.A) / 255.0
-              + Math.Abs(a.B * a.A - b.B * b.A) / 255.0
-              + Math.Abs(a.A - b.A)) / 4;
+        var signals = EdgeSignals.Build(image);
+        var coarseX = DetectAxis(signals.X);
+        var coarseY = DetectAxis(signals.Y);
+        var refiner = new FractionalPeriodRefiner(options);
+        var x = refiner.Refine(signals.X, coarseX.Period, coarseX.Offset);
+        var y = refiner.Refine(signals.Y, coarseY.Period, coarseY.Offset);
+        double confidence = Math.Min(x.Confidence, y.Confidence);
+        var method = confidence == 0 ? GridDetectionMethod.Unknown
+            : x.Period == Math.Round(x.Period) && y.Period == Math.Round(y.Period)
+              && x.Offset == Math.Round(x.Offset) && y.Offset == Math.Round(y.Offset)
+                ? GridDetectionMethod.EdgePeriodicity : GridDetectionMethod.FractionalRefinement;
+        var geometry = new GridGeometry(x.Period, y.Period, x.Offset, y.Offset, confidence, method);
+        _ = GridSampler.GetRegion(image, geometry);
+        return new GridDetectionResult(geometry, x.Diagnostics, y.Diagnostics);
     }
 
     private AxisResult DetectAxis(double[] raw)
