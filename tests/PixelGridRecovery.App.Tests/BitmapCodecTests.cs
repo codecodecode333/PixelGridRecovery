@@ -61,6 +61,37 @@ public sealed class BitmapCodecTests : IDisposable
     }
 
     [Fact]
+    public void FailedExportDoesNotLeaveTemporaryFiles()
+    {
+        string destination = Path.Combine(directory, "existing-directory");
+        Directory.CreateDirectory(destination);
+        var error = Record.Exception(() => BitmapCodec.SavePng(new PixelImage(2, 2), destination));
+        Assert.True(error is IOException or UnauthorizedAccessException);
+        Assert.True(Directory.Exists(destination));
+        Assert.Empty(Directory.GetFiles(directory));
+    }
+
+    [Fact]
+    public void ExportCanReplaceAnExistingPng()
+    {
+        string path = Path.Combine(directory, "replaced.png");
+        BitmapCodec.SavePng(new PixelImage(2, 2), path);
+        BitmapCodec.SavePng(new PixelImage(3, 4), path);
+        var loaded = BitmapCodec.Load(path);
+        Assert.Equal(3, loaded.Width);
+        Assert.Equal(4, loaded.Height);
+        Assert.Single(Directory.GetFiles(directory));
+    }
+
+    [Fact]
+    public void MalformedPngIsRejected()
+    {
+        string path = Path.Combine(directory, "broken.png");
+        File.WriteAllText(path, "This is not an image.");
+        Assert.Throws<ArgumentException>(() => BitmapCodec.Load(path));
+    }
+
+    [Fact]
     public void RejectsOtherImageFormats()
     {
         string path = Path.Combine(directory, "input.gif");

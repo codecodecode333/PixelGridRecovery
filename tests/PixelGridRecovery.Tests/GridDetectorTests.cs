@@ -106,6 +106,39 @@ public sealed class GridDetectorTests
     }
 
     [Fact]
+    public void IsolatedOffGridStripeDoesNotHideRepeatedLowContrastEdges()
+    {
+        var image = SyntheticImages.Blocks();
+        for (int y = 0; y < image.Height; y++)
+        for (int x = 0; x < image.Width; x++)
+        {
+            var pixel = image[x, y];
+            image[x, y] = x == 37 ? new Rgba32(255, 255, 255)
+                : new Rgba32((byte)(pixel.R / 8), (byte)(pixel.G / 8), (byte)(pixel.B / 8));
+        }
+        var grid = new GridDetector().Detect(image);
+        Assert.Equal(10, grid.CellWidth);
+        Assert.Equal(10, grid.CellHeight);
+        Assert.Equal(0, grid.OffsetX);
+        Assert.Equal(0, grid.OffsetY);
+    }
+
+    [Fact]
+    public void LargeUniformBackgroundStillAllowsSpriteGridDetection()
+    {
+        var sprite = SyntheticImages.Blocks();
+        var image = new PixelImage(483, 487);
+        for (int y = 0; y < sprite.Height; y++)
+        for (int x = 0; x < sprite.Width; x++)
+            image[203 + x, 207 + y] = sprite[x, y];
+        var grid = new GridDetector().Detect(image);
+        Assert.Equal(10, grid.CellWidth);
+        Assert.Equal(10, grid.CellHeight);
+        Assert.Equal(3, grid.OffsetX);
+        Assert.Equal(7, grid.OffsetY);
+    }
+
+    [Fact]
     public void TinyImageReturnsSafeFallback() =>
         Assert.Equal(new GridInfo(1, 1, 0, 0, 0), new GridDetector().Detect(new PixelImage(1, 1)));
 

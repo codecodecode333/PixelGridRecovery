@@ -58,19 +58,21 @@ public sealed class GridDetector
         // Lower quantiles estimate the within-cell noise floor even for 2px cells.
         double lower = Quantile(sorted, 0.2);
         double floor = lower + NoiseMultiplier * (Quantile(sorted, 0.4) - lower);
-        var positive = sorted.Select(value => Math.Max(0, value - floor)).Where(value => value > 0).ToArray();
+        var positive = sorted.Select(value => Math.Max(0, value - floor)).Where(value => value >= MinimumContrast).ToArray();
         if (positive.Length < MinimumRepeatedEdges)
             return fallback;
 
-        double cap = Quantile(positive, 0.9);
+        double cap = Quantile(positive, 0.75);
         if (cap < MinimumContrast)
             return fallback;
-        var signal = raw.Select(value => Math.Clamp((value - floor) / cap, 0, 1)).ToArray();
+        var signal = raw.Select(value => value - floor < MinimumContrast ? 0 : Math.Clamp((value - floor) / cap, 0, 1)).ToArray();
         signal[0] = 0; // There is no observable edge before the first pixel.
+        int firstEdge = Array.FindIndex(signal, value => value > 0);
+        int lastEdge = Array.FindLastIndex(signal, value => value > 0);
         double total = signal.Sum();
         var best = new Candidate(fallback.Period, 0, 0);
         double runnerUp = 0;
-        int maxPeriod = Math.Min(options.MaxCellSize, (raw.Length - 1) / MinimumRepeatedEdges);
+        int maxPeriod = Math.Min(options.MaxCellSize, (raw.Length - 1) / (MinimumRepeatedEdges - 1));
 
         for (int period = options.MinCellSize; period <= maxPeriod; period++)
         for (int offset = 0; offset < period; offset++)
@@ -80,7 +82,9 @@ public sealed class GridDetector
             double captured = 0;
             for (int position = offset == 0 ? period : offset; position < signal.Length; position += period)
             {
-                count++;
+                // Empty margins should not favor a larger multiple of a small sprite's grid.
+                if (position >= firstEdge && position <= lastEdge)
+                    count++;
                 captured += signal[position];
                 if (signal[position] >= StrongEdgeThreshold)
                     hits++;

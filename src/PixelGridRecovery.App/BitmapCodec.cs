@@ -76,6 +76,18 @@ public static class BitmapCodec
     public static void SavePng(PixelImage image, string path)
     {
         using var bitmap = ToBitmap(image);
-        bitmap.Save(path, ImageFormat.Png);
+        string destination = Path.GetFullPath(path);
+        string temporary = Path.Combine(Path.GetDirectoryName(destination)!, $".pixelgrid-{Guid.NewGuid():N}.tmp");
+        try
+        {
+            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                bitmap.Save(stream, ImageFormat.Png);
+            File.Move(temporary, destination, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporary))
+                File.Delete(temporary);
+        }
     }
 }
