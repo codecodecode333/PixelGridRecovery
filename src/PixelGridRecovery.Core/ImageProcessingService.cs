@@ -6,6 +6,7 @@ public sealed class ImageProcessingService
     private readonly GridCropper cropper = new();
     private readonly BlockReducer reducer = new();
     private readonly GridSampler sampler = new();
+    private readonly BackgroundRemover backgroundRemover = new();
 
     public ImageProcessingService(GridDetectionOptions? options = null) => detector = new GridDetector(options);
 
@@ -16,6 +17,9 @@ public sealed class ImageProcessingService
     public GridRegion GetCropBounds(PixelImage image, GridGeometry grid) => GridSampler.GetRegion(image, grid);
     public GridRecoveryResult Process(PixelImage image, GridGeometry grid,
         BlockReductionMode mode = BlockReductionMode.DominantColor) => sampler.Recover(image, grid, mode);
+    public BackgroundRemovalResult RemoveBackground(PixelImage recovered,
+        BackgroundRemovalOptions? options = null) => backgroundRemover.Remove(recovered, options);
+    public Rgba32? DetectBackgroundColor(PixelImage recovered) => BackgroundRemover.DetectBorderColor(recovered);
 
     public GridBounds GetCropBounds(PixelImage image, GridInfo grid) => cropper.GetBounds(image, grid);
 

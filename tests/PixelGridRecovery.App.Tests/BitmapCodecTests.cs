@@ -83,6 +83,27 @@ public sealed class BitmapCodecTests : IDisposable
     }
 
     [Fact]
+    public void BackgroundRemovalExportPreservesTransparencyAndForegroundAlpha()
+    {
+        var recovered = new PixelImage(5, 4);
+        for (int y = 0; y < recovered.Height; y++)
+        for (int x = 0; x < recovered.Width; x++) recovered[x, y] = new Rgba32(230, 225, 220);
+        recovered[2, 1] = recovered[2, 2] = new Rgba32(20, 80, 140, 128);
+        var removed = new ImageProcessingService().RemoveBackground(recovered, new BackgroundRemovalOptions
+        {
+            Mode = BackgroundRemovalMode.AutoBorder,
+            Tolerance = 0
+        });
+        string path = Path.Combine(directory, "transparent-sprite.png");
+
+        BitmapCodec.SavePng(removed.Output, path);
+        var loaded = BitmapCodec.Load(path);
+
+        Assert.Equal(default, loaded[0, 0]);
+        Assert.Equal(new Rgba32(20, 80, 140, 128), loaded[2, 1]);
+    }
+
+    [Fact]
     public void FailedExportDoesNotLeaveTemporaryFiles()
     {
         string destination = Path.Combine(directory, "existing-directory");

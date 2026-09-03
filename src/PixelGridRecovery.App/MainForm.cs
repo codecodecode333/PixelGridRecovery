@@ -7,19 +7,24 @@ public sealed partial class MainForm : Form
 {
     private readonly ImageProcessingService service = new();
     private PixelImage? original;
-    private GridRecoveryResult? result;
+    private GridRecoveryResult? recoveredResult;
+    private BackgroundRemovalResult? backgroundRemovedResult;
     private Bitmap? originalBitmap;
     private Bitmap? resultBitmap;
     private string? sourcePath;
     private bool updating;
     private double confidence;
     private GridDetectionMethod detectionMethod = GridDetectionMethod.Unknown;
+    private Rgba32? pickedBackgroundColor;
+    private bool pickingBackgroundColor;
 
     public MainForm()
     {
         BuildLayout();
         modeInput.DataSource = Enum.GetValues<BlockReductionMode>();
         modeInput.SelectedItem = BlockReductionMode.DominantColor;
+        backgroundModeInput.DataSource = Enum.GetValues<BackgroundRemovalMode>();
+        backgroundModeInput.SelectedItem = BackgroundRemovalMode.None;
         loadButton.Click += (_, _) => LoadImage();
         detectButton.Click += (_, _) => RunOperation(AutoDetect);
         previewButton.Click += (_, _) => RunOperation(PreviewResult);
@@ -27,8 +32,19 @@ public sealed partial class MainForm : Form
         foreach (var input in new[] { cellWidthInput, cellHeightInput, offsetXInput, offsetYInput })
             input.ValueChanged += (_, _) => GridChanged();
         modeInput.SelectedValueChanged += (_, _) => InvalidateResult();
+        backgroundModeInput.SelectedValueChanged += (_, _) => BackgroundSettingsChanged();
+        toleranceInput.ValueChanged += (_, _) =>
+        {
+            toleranceLabel.Text = $"Tolerance: {toleranceInput.Value}";
+            BackgroundSettingsChanged();
+        };
+        borderConnectedInput.CheckedChanged += (_, _) => BackgroundSettingsChanged();
+        autoBackgroundButton.Click += (_, _) => RunOperation(AutoDetectBackground);
+        pickBackgroundButton.Click += (_, _) => BeginPickBackgroundColor();
+        resultPreview.MouseClick += (_, args) => PickBackgroundColor(args.Location);
         overlayInput.CheckedChanged += (_, _) => originalPreview.ShowGrid = overlayInput.Checked;
         settings.Enabled = detectButton.Enabled = previewButton.Enabled = exportButton.Enabled = false;
+        backgroundSettings.Enabled = false;
     }
 
     private GridGeometry CurrentGrid => new((double)cellWidthInput.Value, (double)cellHeightInput.Value,
@@ -65,6 +81,7 @@ public sealed partial class MainForm : Form
             detectionMethod = GridDetectionMethod.Unknown;
             methodLabel.Text = "Method: —";
             confidenceLabel.Text = "Confidence: —";
+            ResetBackgroundRemovalControls();
             InvalidateResult();
             UpdateGridDisplay();
             statusLabel.Text = "Auto Detect를 누르거나 격자 값을 직접 입력하세요.";
@@ -142,11 +159,15 @@ public sealed partial class MainForm : Form
     {
         if (updating)
             return;
-        result = null;
+        recoveredResult = null;
+        backgroundRemovedResult = null;
+        pickingBackgroundColor = false;
+        resultPreview.Cursor = Cursors.Default;
         resultPreview.PreviewImage = null;
         resultBitmap?.Dispose();
         resultBitmap = null;
         exportButton.Enabled = false;
+        backgroundSettings.Enabled = false;
         if (original is not null)
             statusLabel.Text = "설정이 변경되었습니다. Preview Result를 눌러 결과를 갱신하세요.";
     }
@@ -156,19 +177,136 @@ public sealed partial class MainForm : Form
         if (original is null)
             return;
         var processed = service.Process(original, CurrentGrid, (BlockReductionMode)modeInput.SelectedItem!);
-        var bitmap = BitmapCodec.ToBitmap(processed.Output);
+        recoveredResult = processed;
+        backgroundSettings.Enabled = true;
+        RefreshBackgroundRemoval();
+    }
+
+    private BackgroundRemovalMode CurrentBackgroundMode =>
+        (BackgroundRemovalMode)backgroundModeInput.SelectedItem!;
+
+    private BackgroundRemovalOptions CurrentBackgroundOptions => new()
+    {
+        Mode = CurrentBackgroundMode,
+        BackgroundColor = pickedBackgroundColor,
+        Tolerance = toleranceInput.Value,
+        BorderConnectedOnly = borderConnectedInput.Checked
+    };
+
+    private void BackgroundSettingsChanged()
+    {
+        if (updating) return;
+        RunOperation(RefreshBackgroundRemoval);
+    }
+
+    private void RefreshBackgroundRemoval()
+    {
+        if (recoveredResult is null) return;
+        pickingBackgroundColor = false;
+        resultPreview.Cursor = Cursors.Default;
+        if (CurrentBackgroundMode == BackgroundRemovalMode.None)
+        {
+            backgroundRemovedResult = null;
+            ShowResult(recoveredResult.Output);
+            exportButton.Enabled = true;
+            statusLabel.Text = $"복원 완료: {recoveredResult.Output.Width} × {recoveredResult.Output.Height} px · 배경 제거 안 함";
+            return;
+        }
+        if (CurrentBackgroundMode == BackgroundRemovalMode.PickColor && pickedBackgroundColor is null)
+        {
+            backgroundRemovedResult = null;
+            ShowResult(recoveredResult.Output);
+            exportButton.Enabled = false;
+            statusLabel.Text = "Pick Color를 누른 뒤 결과 이미지에서 배경색을 선택하세요.";
+            return;
+        }
+        backgroundRemovedResult = service.RemoveBackground(recoveredResult.Output, CurrentBackgroundOptions);
+        if (backgroundRemovedResult.BackgroundColor is { } color)
+        {
+            pickedBackgroundColor = color;
+            ShowBackgroundColor(color);
+        }
+        ShowResult(backgroundRemovedResult.Output);
+        exportButton.Enabled = true;
+        statusLabel.Text = $"배경 제거 완료: {backgroundRemovedResult.RemovedPixelCount} px 투명화 · PNG alpha 내보내기 가능";
+    }
+
+    private void AutoDetectBackground()
+    {
+        if (recoveredResult is null) return;
+        var color = service.DetectBackgroundColor(recoveredResult.Output);
+        if (color is null)
+        {
+            statusLabel.Text = "불투명한 테두리 픽셀이 없어 배경색을 찾지 못했습니다.";
+            return;
+        }
+        pickedBackgroundColor = color;
+        ShowBackgroundColor(color.Value);
+        updating = true;
+        backgroundModeInput.SelectedItem = BackgroundRemovalMode.AutoBorder;
+        updating = false;
+        RefreshBackgroundRemoval();
+    }
+
+    private void BeginPickBackgroundColor()
+    {
+        if (recoveredResult is null) return;
+        pickingBackgroundColor = true;
+        ShowResult(recoveredResult.Output);
+        exportButton.Enabled = false;
+        resultPreview.Cursor = Cursors.Cross;
+        statusLabel.Text = "결과 이미지에서 배경으로 사용할 픽셀을 클릭하세요.";
+    }
+
+    private void PickBackgroundColor(Point clientPoint)
+    {
+        if (!pickingBackgroundColor || recoveredResult is null
+            || !resultPreview.TryGetImagePixel(clientPoint, out var pixel)) return;
+        var color = recoveredResult.Output[pixel.X, pixel.Y];
+        if (color.A == 0)
+        {
+            statusLabel.Text = "이미 투명한 픽셀입니다. 불투명한 배경 픽셀을 선택하세요.";
+            return;
+        }
+        pickedBackgroundColor = new Rgba32(color.R, color.G, color.B);
+        ShowBackgroundColor(pickedBackgroundColor.Value);
+        pickingBackgroundColor = false;
+        resultPreview.Cursor = Cursors.Default;
+        updating = true;
+        backgroundModeInput.SelectedItem = BackgroundRemovalMode.PickColor;
+        updating = false;
+        RunOperation(RefreshBackgroundRemoval);
+    }
+
+    private void ShowResult(PixelImage image)
+    {
+        var bitmap = BitmapCodec.ToBitmap(image);
         resultPreview.PreviewImage = null;
         resultBitmap?.Dispose();
-        result = processed;
         resultBitmap = bitmap;
         resultPreview.PreviewImage = bitmap;
-        exportButton.Enabled = true;
-        statusLabel.Text = $"복원 완료: {processed.Output.Width} × {processed.Output.Height} px · PNG로 저장할 수 있습니다.";
+    }
+
+    private void ShowBackgroundColor(Rgba32 color) =>
+        backgroundColorLabel.Text = $"Background Color: #{color.R:X2}{color.G:X2}{color.B:X2}";
+
+    private void ResetBackgroundRemovalControls()
+    {
+        bool wasUpdating = updating;
+        updating = true;
+        pickedBackgroundColor = null;
+        backgroundColorLabel.Text = "Background Color: —";
+        backgroundModeInput.SelectedItem = BackgroundRemovalMode.None;
+        toleranceInput.Value = 20;
+        borderConnectedInput.Checked = true;
+        updating = wasUpdating;
     }
 
     private void ExportPng()
     {
-        if (result is null)
+        PixelImage? exportImage = CurrentBackgroundMode == BackgroundRemovalMode.None
+            ? recoveredResult?.Output : backgroundRemovedResult?.Output;
+        if (exportImage is null)
             return;
         using var dialog = new SaveFileDialog
         {
@@ -181,7 +319,7 @@ public sealed partial class MainForm : Form
         {
             if (!string.Equals(Path.GetExtension(dialog.FileName), ".png", StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("저장 파일의 확장자는 .png여야 합니다.");
-            BitmapCodec.SavePng(result.Output, dialog.FileName);
+            BitmapCodec.SavePng(exportImage, dialog.FileName);
             statusLabel.Text = $"저장 완료: {dialog.FileName}";
         });
     }

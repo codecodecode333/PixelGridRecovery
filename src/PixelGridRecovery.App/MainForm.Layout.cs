@@ -11,6 +11,13 @@ public sealed partial class MainForm
     private readonly NumericUpDown offsetXInput = MakeNumber("Offset X", 0, 0);
     private readonly NumericUpDown offsetYInput = MakeNumber("Offset Y", 0, 0);
     private readonly ComboBox modeInput = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Top, AccessibleName = "Reduction Mode" };
+    private readonly ComboBox backgroundModeInput = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Top, AccessibleName = "Background Removal Mode" };
+    private readonly TrackBar toleranceInput = new() { Minimum = 0, Maximum = 100, Value = 20, TickFrequency = 10, SmallChange = 1, LargeChange = 5, Dock = DockStyle.Fill, AccessibleName = "Background Tolerance" };
+    private readonly Label toleranceLabel = MakeLabel("Tolerance: 20");
+    private readonly CheckBox borderConnectedInput = new() { Text = "Border-connected only", Checked = true, AutoSize = true, AccessibleName = "Border-connected only" };
+    private readonly Button autoBackgroundButton = MakeButton("Auto Border", "Auto Detect Background");
+    private readonly Button pickBackgroundButton = MakeButton("Pick Color");
+    private readonly Label backgroundColorLabel = new() { Text = "Background Color: —", AutoSize = true, AccessibleName = "Background Color", Margin = new Padding(3, 7, 3, 7) };
     private readonly CheckBox overlayInput = new() { Text = "Grid Overlay 표시", Checked = true, AutoSize = true };
     private readonly Label confidenceLabel = MakeLabel("Confidence: —");
     private readonly Label methodLabel = new() { Text = "Method: —", AutoSize = true, MaximumSize = new Size(210, 0), AccessibleName = "Detection Method", Margin = new Padding(3, 7, 3, 7) };
@@ -22,6 +29,7 @@ public sealed partial class MainForm
     private readonly ImagePreviewControl originalPreview = new() { ShowGrid = true, AccessibleName = "Original Preview" };
     private readonly ImagePreviewControl resultPreview = new() { AccessibleName = "Result Preview" };
     private readonly TableLayoutPanel settings = new() { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Padding = new Padding(12) };
+    private readonly TableLayoutPanel backgroundSettings = new() { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, AccessibleName = "Background Removal" };
 
     private void BuildLayout()
     {
@@ -62,6 +70,25 @@ public sealed partial class MainForm
         settings.Controls.Add(overlayInput);
         settings.Controls.Add(MakeLabel("Reduction Mode"));
         settings.Controls.Add(modeInput);
+        backgroundSettings.Controls.Add(MakeLabel("Background Removal"));
+        backgroundSettings.Controls.Add(backgroundModeInput);
+        var toleranceRow = new TableLayoutPanel { Dock = DockStyle.Top, Height = 42, ColumnCount = 2 };
+        toleranceRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        toleranceRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        toleranceRow.Controls.Add(toleranceLabel);
+        toleranceRow.Controls.Add(toleranceInput);
+        backgroundSettings.Controls.Add(toleranceRow);
+        backgroundSettings.Controls.Add(borderConnectedInput);
+        backgroundSettings.Controls.Add(backgroundColorLabel);
+        var backgroundButtons = new TableLayoutPanel { Dock = DockStyle.Top, Height = 42, ColumnCount = 2 };
+        backgroundButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        backgroundButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        autoBackgroundButton.Dock = pickBackgroundButton.Dock = DockStyle.Fill;
+        autoBackgroundButton.AutoSize = pickBackgroundButton.AutoSize = false;
+        backgroundButtons.Controls.Add(autoBackgroundButton, 0, 0);
+        backgroundButtons.Controls.Add(pickBackgroundButton, 1, 0);
+        backgroundSettings.Controls.Add(backgroundButtons);
+        settings.Controls.Add(backgroundSettings);
         settings.Controls.Add(MakeLabel("이미지 크기"));
         settings.Controls.Add(originalSizeLabel);
         settings.Controls.Add(croppedSizeLabel);
@@ -100,6 +127,6 @@ public sealed partial class MainForm
     }
 
     private static Label MakeLabel(string text) => new() { Text = text, AutoSize = true, Margin = new Padding(3, 7, 3, 7) };
-    private static Button MakeButton(string text) => new() { Text = text, AutoSize = true, Height = 36, Padding = new Padding(8, 3, 8, 3), Margin = new Padding(0, 3, 8, 3), AccessibleName = text };
+    private static Button MakeButton(string text, string? accessibleName = null) => new() { Text = text, AutoSize = true, Height = 36, Padding = new Padding(8, 3, 8, 3), Margin = new Padding(0, 3, 8, 3), AccessibleName = accessibleName ?? text };
     private static NumericUpDown MakeNumber(string name, int minimum, int value) => new() { Minimum = minimum, Maximum = 1_000_000, Value = value, DecimalPlaces = 3, Increment = 0.05m, Dock = DockStyle.Fill, AccessibleName = name };
 }

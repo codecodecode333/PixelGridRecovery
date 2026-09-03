@@ -1,6 +1,6 @@
 # PixelGridRecovery
 
-확대·리샘플링된 픽셀아트의 격자를 추정하고 원래 논리 픽셀 단위의 PNG로 복원하는 C# / .NET 8 / Windows Forms 도구입니다. V0.2는 **Fractional Grid Recovery**를 지원합니다.
+확대·리샘플링된 픽셀아트의 격자를 추정하고 원래 논리 픽셀 단위의 PNG로 복원하는 C# / .NET 8 / Windows Forms 도구입니다. V0.2의 **Fractional Grid Recovery**에 **Sprite Background Removal V0.1**을 더했습니다.
 
 ```text
 PNG/JPG
@@ -9,6 +9,7 @@ PNG/JPG
   → fractional period / offset refinement
   → geometry / complete-cell validation
   → 원본 fractional cell 직접 sampling
+  → border color + 연결 영역 background removal (선택)
   → logical sprite PNG
 ```
 
@@ -57,9 +58,13 @@ dotnet test PixelGridRecovery.sln -c Release --no-build --no-restore
 4. 필요하면 **Cell Width / Height / Offset X / Y**를 직접 수정합니다. 소수점 3자리 표시, 증감 단위 0.05px이며 자동 검출의 내부 정밀도는 유지합니다.
 5. **Reduction Mode**를 선택합니다. 기본값은 **DominantColor**입니다.
 6. **Preview Result**로 원본의 실수 셀 영역을 직접 축소합니다.
-7. **Export PNG**로 저장합니다. 기본 파일명은 `원본이름-recovered.png`입니다.
+7. 필요하면 **Background Removal**을 `AutoBorder`로 바꾸고 Tolerance를 조절합니다. 내부의 비슷한 색을 보존하려면 기본값인 **Border-connected only**를 유지합니다.
+8. 자동 선택이 맞지 않으면 **Pick Color**를 누르고 결과 미리보기의 배경 픽셀을 클릭합니다.
+9. 체커보드에서 투명 결과를 확인한 뒤 **Export PNG**로 저장합니다. 기본 파일명은 `원본이름-recovered.png`입니다.
 
 기존 Load → Auto Detect → Overlay → Preview → Export 흐름을 유지합니다. 격자/모드가 바뀌면 이전 결과를 지우고 Export를 비활성화합니다. 신뢰도가 낮아도 수동 처리가 가능합니다. 완전한 셀이 하나도 남지 않는 설정은 거절합니다.
+
+격자 또는 Reduction Mode가 바뀌면 recovered 이미지와 배경 제거 결과를 모두 지웁니다. Background Removal 설정만 바뀌면 recovered 이미지는 유지하고 작은 논리 이미지만 다시 처리합니다. `Mode=None`이면 recovered 이미지를, 제거가 활성화되면 투명화 결과를 내보냅니다.
 
 Original은 입력 raster 크기, Cropped는 사용한 실수 영역의 크기, Output은 정수 논리 해상도입니다. 화면은 nearest-neighbor로 창에 맞추고 확대 시 정수 배율을 사용합니다. 축소된 화면에서 너무 촘촘한 격자는 일부 선을 생략하지만, 각 선은 실수 geometry에서 직접 계산합니다. 원본 데이터에는 선을 그리지 않습니다.
 
@@ -129,6 +134,29 @@ source pixel을 [x,x+1) × [y,y+1)로 보고, 실수 셀과의 겹친 가로·�
 
 DominantColor는 전체 색 공간에 대한 medoid 최적화가 아니라 작은 고정 histogram 구간을 사용하는 결정론적 대표색입니다. 경계의 혼합색보다 내부의 실제 색이 우세한 픽셀아트에 적합합니다. source에 있던 antialiasing 혼합색 자체가 우세하면 그것이 선택될 수 있습니다. 전체 또는 최종 alpha가 0인 색의 RGB는 0으로 정규화합니다.
 
+## Sprite Background Removal
+
+배경 제거는 고해상도 원본이 아니라 Grid Recovery가 만든 논리 스프라이트에 적용합니다. 일반 사진 segmentation이나 AI 기능이 아니라 단색 또는 유사 단색인 픽셀아트 배경용 기능입니다.
+
+| Mode | 동작 |
+| --- | --- |
+| None (기본) | 배경을 제거하지 않고 recovered 이미지를 그대로 내보냅니다. |
+| AutoBorder | 위·아래·왼쪽·오른쪽 테두리의 불투명 픽셀에서 대표 배경색을 자동으로 계산합니다. |
+| PickColor | 결과 미리보기에서 클릭한 논리 픽셀의 RGB를 기준색으로 사용합니다. |
+
+AutoBorder는 네 모서리를 중복하지 않고 테두리 전체를 수집하며 완전 투명 픽셀은 제외합니다. RGB 각 채널을 5비트로 양자화한 histogram에서 가장 많은 구간을 선택하고, 그 구간의 평균 RGB를 대표색으로 사용합니다. 동률은 고정된 구간 키 순서로 처리하므로 결과가 결정론적입니다. 캐릭터가 테두리 일부에 닿아도 배경 계열이 다수라면 그 색을 선택할 수 있습니다.
+
+Tolerance는 UI에서 0~100이며 RGB Euclidean 거리의 전체 범위로 정규화합니다.
+
+```text
+threshold = Tolerance / 100 × sqrt(255² + 255² + 255²)
+candidate = sqrt((R-Rb)² + (G-Gb)² + (B-Bb)²) <= threshold
+```
+
+색 거리에는 alpha를 넣지 않습니다. `Border-connected only`가 켜져 있으면 candidate인 모든 테두리 픽셀에서 시작해 좌·우·상·하 4방향 flood fill로 도달한 픽셀만 제거합니다. 따라서 foreground에 둘러싸인 같은 색은 보존됩니다. 이 옵션을 끄면 색 거리 안의 모든 픽셀을 제거하는 aggressive 동작이 됩니다.
+
+마스크에 포함된 픽셀은 `(0,0,0,0)`으로 만들며 foreground RGBA는 그대로 보존합니다. 원래 투명했던 픽셀도 숨은 RGB를 0으로 정규화합니다. 처리 시간과 메모리는 recovered 이미지의 픽셀 수에 비례합니다. 미리보기의 선택 좌표는 실제 표시 사각형에서 계산하므로 nearest-neighbor 확대·축소와 중앙 letterbox를 반영합니다.
+
 모든 연산은 8비트 채널 공간에서 수행합니다. 평균·짝수 중앙값은 가장 가까운 정수로 반올림하고 절반이면 올립니다. 원본은 수정하지 않습니다. 파일을 읽은 뒤 핸들을 해제하고, 저장은 임시 PNG 인코딩을 완료한 후 대상 파일을 교체합니다.
 
 ## 주요 파일
@@ -143,6 +171,10 @@ src/PixelGridRecovery.Core/
   GridDetectionOptions.cs        검색 설정
   GridCropper.cs / BlockReducer.cs   정수 API 보존
   GridSampler.cs                면적 기반 원본 직접 복원
+  BackgroundRemovalMode.cs      None / AutoBorder / PickColor
+  BackgroundRemovalOptions.cs   tolerance, 기준색, 연결 영역 설정
+  BackgroundRemover.cs          테두리 색 추정, 후보 mask, 4방향 flood fill
+  BackgroundRemovalResult.cs    투명 결과, 선택색, 제거 픽셀 수
   ImageProcessingService.cs     정수/실수 서비스 API
 src/PixelGridRecovery.App/
   MainForm.cs / MainForm.Layout.cs   실수 숫자 입력과 기존 workflow
@@ -152,6 +184,7 @@ tests/PixelGridRecovery.Tests/
   FractionalSyntheticImages.cs   독립적인 logical-coordinate NN/면적 rasterizer
   FractionalDetectionTests.cs    배율·offset·drift·배경·노이즈·결정론
   GridSamplerTests.cs            면적, alpha, 경계, 정수 회귀
+  BackgroundRemoverTests.cs      배경색, tolerance, 연결 영역, 통합 흐름
 tests/PixelGridRecovery.App.Tests/
   BitmapCodecTests.cs            수동/자동 fractional geometry PNG 왕복
   MainFormLayoutTests.cs         폼 렌더링과 소수점 입력 설정
@@ -169,6 +202,8 @@ tests/PixelGridRecovery.App.Tests/
 - ±2/±4 RGB noise, 3×3 약한 blur, 큰 균일 배경, 18.6×17.4 독립 축, 반복 호출의 결정론, 단색의 낮은 confidence를 검사합니다.
 - 정확한 source 겹침 면적·alpha, 실제 source 색 선택, 정수 대표색 회귀, floating-point 셀 수, 잘못된 geometry 거절을 검사합니다.
 - 수동 18.55×18.70 / offset 7.35,12.7 및 자동 검출 결과를 PNG 저장 후 다시 읽어 논리 픽셀과 비교합니다.
+- 단색 배경, 내부 동일색 보존, aggressive mode, 정규화 tolerance, AutoBorder 오염, 4방향 연결, 투명색 정규화, foreground alpha, 1×1, 잘못된 옵션을 검사합니다.
+- fractional rasterize → Grid Detect → Grid Recover → Background Removal의 전체 흐름과 투명 PNG alpha 왕복을 검사합니다.
 - 테스트 로그에는 검출 시간과 축별 diagnostics, drift 오차가 기록됩니다. 실제 실행 결과는 별도 작업 보고를 참고하세요.
 
 ## 한계
@@ -181,4 +216,6 @@ tests/PixelGridRecovery.App.Tests/
 - 후보 수와 검색 범위가 제한된 결정론적 탐색이며 모든 AI 생성 이미지의 최적 lattice를 보장하지 않습니다. 실제 AI 입력은 별도로 검토해야 합니다.
 - 입력 상한은 16,777,216 픽셀입니다. 명시적인 버튼 클릭에서 동기 처리하므로 큰 이미지/작은 셀에서는 잠시 기다릴 수 있습니다.
 - 8비트 RGBA PNG 출력이며 원본 고비트 심도, EXIF/ICC 메타데이터는 보존하지 않습니다.
-- AI/딥러닝, OpenCV, 배경 제거, 정규화 미리보기, 회전/원근/mesh 보정, palette editor, 애니메이션, batch 처리는 포함하지 않습니다.
+- 배경 제거는 단색/유사 단색 pixel-art 배경을 위한 기능입니다. 복잡한 사진 배경이나 foreground와 매우 비슷한 배경에서는 AutoBorder와 tolerance만으로 분리되지 않을 수 있습니다.
+- hair, soft shadow, glow 같은 반투명 가장자리의 matte 추정, feather, brush/lasso 복구·지우기는 지원하지 않습니다.
+- AI/딥러닝, OpenCV, remove.bg, GrabCut, 정규화 미리보기, 회전/원근/mesh 보정, palette editor, 애니메이션, batch 처리는 포함하지 않습니다.
